@@ -1,0 +1,6 @@
+[package]
+name = "spotify_data_explorer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
