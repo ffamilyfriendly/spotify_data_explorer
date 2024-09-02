@@ -7,8 +7,14 @@ type Table = Vec<PlayEntry>;
 pub enum Node {
     Display(Box<Node>),
     TitleMatches(Box<Node>, String),
+    /// Get songs with more than <u32>ms of playtime
     PlayTimeAbove(Box<Node>, u32),
+    /// Get songs before <DateTime>
     Before(Box<Node>, DateTime),
+    /// Get songs after <DateTime>
+    After(Box<Node>, DateTime),
+    /// Get songs between <DateTime> and <DateTime>
+    During(Box<Node>, DateTime, DateTime),
     Table(Table)
 }
 
@@ -42,13 +48,29 @@ fn get_before(t: Box<Table>, date: DateTime) -> Table {
     res
 }
 
+fn get_after(t: Box<Table>, date: DateTime) -> Table {
+    
+    let mut res: Table = Vec::new();
+    for entry in t.into_iter().rev() {
+        if entry.time < date {
+            break;
+        }
+
+        res.push(entry);
+    }
+    res.reverse();
+    res
+}
+
 pub fn run(cmd: Node) -> Table {
     match cmd {
         Node::Table(tbl) => tbl,
         Node::Display(tbl) => display(run(*tbl).into()),
         Node::TitleMatches(tbl, filter_string) => title_matches(run(*tbl).into(), filter_string),
         Node::PlayTimeAbove(tbl, time) => playtime_above(run(*tbl).into(), time),
-        Node::Before(tbl, timestamp) => get_before(run(*tbl).into(), timestamp)
+        Node::Before(tbl, timestamp) => get_before(run(*tbl).into(), timestamp),
+        Node::After(tbl, timestamp) => get_after(run(*tbl).into(), timestamp),
+        Node::During(tbl, before, after) => run(Node::Before(Node::After(tbl, before).into(), after))
 
     }
 }

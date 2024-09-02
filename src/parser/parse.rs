@@ -24,7 +24,7 @@ impl DateTime {
 
 impl std::fmt::Display for DateTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!("{}/{}/{} @ {}:{}", self.day, self.month, self.year, self.hour, self.minute))?;
+        f.write_str(&format!("{:0>2}/{:0>2}/{:0>2} @ {:0>2}:{:0>2}", self.day, self.month, self.year, self.hour, self.minute))?;
         
         Ok(())
     }
