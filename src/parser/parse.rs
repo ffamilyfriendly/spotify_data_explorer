@@ -36,10 +36,11 @@ impl DateTime {
 impl Display for DateTime {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!(
+        write!(
+            f,
             "{:0>2}/{:0>2}/{:0>2} @ {:0>2}:{:0>2}",
             self.day, self.month, self.year, self.hour, self.minute
-        ))
+        )
     }
 }
 
