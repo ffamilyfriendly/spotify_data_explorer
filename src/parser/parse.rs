@@ -5,6 +5,7 @@ use std::{
     fs, io,
     num::{IntErrorKind, ParseIntError},
     path::PathBuf,
+    str::FromStr,
 };
 
 #[derive(Copy, Clone, PartialEq)]
@@ -63,9 +64,10 @@ impl PartialOrd for DateTime {
     }
 }
 
-impl TryFrom<&str> for DateTime {
-    type Error = DateTimeError;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+impl FromStr for DateTime {
+    type Err = DateTimeError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         let sep = value.find(' ').ok_or(DateTimeError::ParseError(
             "found no date and time separator",
         ))?;
@@ -120,7 +122,7 @@ impl Builder {
             self.ptr = 0;
 
             self.vec.push(PlayEntry {
-                time: DateTime::try_from(self.buf[0].as_str())?,
+                time: self.buf[0].as_str().parse()?,
                 artist: self.buf[1].to_lowercase(),
                 song: self.buf[2].to_lowercase(),
                 ms_played: self.buf[3].parse()?,
