@@ -46,24 +46,7 @@ fn main() {
 
     let db_node = Node::Table(table);
     let above_3s = Node::PlayTimeAbove(&db_node, 3000);
-    let before = Node::During(
-        &above_3s,
-        DateTime {
-            year: 2023,
-            month: 11,
-            day: 30,
-            hour: 00,
-            minute: 00,
-        },
-        DateTime {
-            year: 2023,
-            month: 12,
-            day: 01,
-            hour: 02,
-            minute: 00,
-        },
-    );
-    //let before = Node::After(above_3s.into(), DateTime { year: 2024, month: 07, day: 10, hour: 00, minute: 00 });
+    let before = Node::During(&above_3s, DateTime { year: 2023, month: 12, day: 31, hour: 23, minute: 59 }, DateTime { year: 2024, month: 01, day: 10, hour: 23, minute: 59 });
     let test_cmd = Node::Display(&before);
 
     cli::run::run(&test_cmd);

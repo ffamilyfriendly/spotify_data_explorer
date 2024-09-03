@@ -39,7 +39,7 @@ fn playtime_above(t: Table, time: u32) -> Table {
 
 fn get_before(t: Table, date: &DateTime) -> Table {
     t.into_iter()
-        .take_while(|entry| &entry.time > date)
+        .take_while(|entry| &entry.time < date)
         .collect()
 }
 
@@ -47,7 +47,7 @@ fn get_after(t: Table, date: &DateTime) -> Table {
     let mut res: Table = t
         .into_iter()
         .rev()
-        .take_while(|entry| &entry.time < date)
+        .take_while(|entry| &entry.time > date)
         .collect();
 
     res.reverse();
