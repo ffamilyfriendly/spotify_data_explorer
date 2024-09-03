@@ -2,8 +2,7 @@ use std::{
     cmp::Ordering,
     ffi::OsString,
     fmt::{self, Display, Formatter},
-    fs::File,
-    io::{self, Read},
+    fs, io,
     num::{IntErrorKind, ParseIntError},
     path::PathBuf,
 };
@@ -136,14 +135,10 @@ impl Builder {
     }
 }
 
-pub fn parse(path: PathBuf) -> Result<Vec<PlayEntry>, io::Error> {
-    let mut f = File::open(&path)?;
-    let mut str_data = String::new();
-    let _ = f.read_to_string(&mut str_data)?;
-
+pub fn parse(path: PathBuf) -> io::Result<Vec<PlayEntry>> {
     let mut fac = Builder::default();
 
-    for (i, l) in str_data
+    for (i, l) in fs::read_to_string(&path)?
         .lines()
         .filter(|l| l.contains(':'))
         .map(|l| l.trim())
