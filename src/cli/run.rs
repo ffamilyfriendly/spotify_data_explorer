@@ -1,76 +1,72 @@
-use std::{any::Any, rc::Rc};
-
 use crate::parser::parse::{DateTime, PlayEntry};
 
 type Table = Vec<PlayEntry>;
 
-pub enum Node {
-    Display(Box<Node>),
-    TitleMatches(Box<Node>, String),
+pub enum Node<'a> {
+    Display(&'a Node<'a>),
+    TitleMatches(&'a Node<'a>, String),
     /// Get songs with more than <u32>ms of playtime
-    PlayTimeAbove(Box<Node>, u32),
+    PlayTimeAbove(&'a Node<'a>, u32),
     /// Get songs before <DateTime>
-    Before(Box<Node>, DateTime),
+    Before(&'a Node<'a>, &'a DateTime),
     /// Get songs after <DateTime>
-    After(Box<Node>, DateTime),
+    After(&'a Node<'a>, &'a DateTime),
     /// Get songs between <DateTime> and <DateTime>
-    During(Box<Node>, DateTime, DateTime),
-    Table(Table)
+    During(&'a Node<'a>, DateTime, DateTime),
+    Table(Table),
 }
 
-fn display(t: Box<Table>) -> Table {
-
-    for row in &*t {
-        println!("Title: {}\nArtist: {}\nPlayed on: {}\nDEBUG: {:?}\n", row.song, row.artist, row.time, row.debug_info)
+fn display(t: Table) -> Table {
+    for row in &t {
+        println!(
+            "Title: {}\nArtist: {}\nPlayed on: {}\nDEBUG: {:?}\n",
+            row.song, row.artist, row.time, row.debug_info
+        )
     }
 
-    return *t;
+    t
 }
 
-fn title_matches(t: Box<Table>, s: String) -> Table {
-    t.into_iter().filter(|x| x.song.contains(&s.to_lowercase())).collect()
+fn title_matches(t: Table, s: &str) -> Table {
+    let sl = s.to_lowercase();
+
+    t.into_iter().filter(|x| x.song.contains(&sl)).collect()
 }
 
-fn playtime_above(t: Box<Table>, time: u32) -> Table {
+fn playtime_above(t: Table, time: u32) -> Table {
     t.into_iter().filter(|x| x.ms_played > time).collect()
 }
 
-fn get_before(t: Box<Table>, date: DateTime) -> Table {
-    
-    let mut res: Table = Vec::new();
-    for entry in t.into_iter() {
-        if entry.time > date {
-            break;
-        }
-
-        res.push(entry);
-    }
-    res
+fn get_before(t: Table, date: &DateTime) -> Table {
+    t.into_iter()
+        .take_while(|entry| &entry.time > date)
+        .collect()
 }
 
-fn get_after(t: Box<Table>, date: DateTime) -> Table {
-    
-    let mut res: Table = Vec::new();
-    for entry in t.into_iter().rev() {
-        if entry.time < date {
-            break;
-        }
+fn get_after(t: Table, date: &DateTime) -> Table {
+    let mut res: Table = t
+        .into_iter()
+        .rev()
+        .take_while(|entry| &entry.time < date)
+        .collect();
 
-        res.push(entry);
-    }
     res.reverse();
     res
 }
 
-pub fn run(cmd: Node) -> Table {
+pub fn run(cmd: &Node) -> Table {
     match cmd {
-        Node::Table(tbl) => tbl,
-        Node::Display(tbl) => display(run(*tbl).into()),
-        Node::TitleMatches(tbl, filter_string) => title_matches(run(*tbl).into(), filter_string),
-        Node::PlayTimeAbove(tbl, time) => playtime_above(run(*tbl).into(), time),
-        Node::Before(tbl, timestamp) => get_before(run(*tbl).into(), timestamp),
-        Node::After(tbl, timestamp) => get_after(run(*tbl).into(), timestamp),
-        Node::During(tbl, before, after) => run(Node::Before(Node::After(tbl, before).into(), after))
+        Node::Table(tbl) => tbl.clone(),
+        Node::Display(tbl) => display(run(tbl)),
+        Node::TitleMatches(tbl, filter_string) => title_matches(run(tbl), filter_string),
+        Node::PlayTimeAbove(tbl, time) => playtime_above(run(tbl), *time),
+        Node::Before(tbl, timestamp) => get_before(run(tbl), timestamp),
+        Node::After(tbl, timestamp) => get_after(run(tbl), timestamp),
+        Node::During(tbl, before, after) => {
+            let parent_node = Node::After(tbl, before);
+            let node = Node::Before(&parent_node, after);
 
+            run(&node)
+        }
     }
 }
