@@ -15,6 +15,8 @@ pub enum Node {
     After(Box<Node>, DateTime),
     /// Get songs between <DateTime> and <DateTime>
     During(Box<Node>, DateTime, DateTime),
+    /// Limit the amount of rows in the table to <u16>
+    Limit(Box<Node>, u16),
     Table(Table)
 }
 
@@ -62,6 +64,13 @@ fn get_after(t: Box<Table>, date: DateTime) -> Table {
     res
 }
 
+fn limit(mut t: Box<Table>, amount: u16) -> Table {
+    t.reverse();
+    t.truncate(amount as usize);
+    t.reverse();
+    return *t;
+}
+
 pub fn run(cmd: Node) -> Table {
     match cmd {
         Node::Table(tbl) => tbl,
@@ -70,6 +79,7 @@ pub fn run(cmd: Node) -> Table {
         Node::PlayTimeAbove(tbl, time) => playtime_above(run(*tbl).into(), time),
         Node::Before(tbl, timestamp) => get_before(run(*tbl).into(), timestamp),
         Node::After(tbl, timestamp) => get_after(run(*tbl).into(), timestamp),
+        Node::Limit(tbl, amount) => limit(run(*tbl).into(), amount),
         Node::During(tbl, before, after) => run(Node::Before(Node::After(tbl, before).into(), after))
 
     }
