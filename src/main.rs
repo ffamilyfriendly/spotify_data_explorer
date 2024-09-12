@@ -1,8 +1,6 @@
-use cli::run::Node;
-use parser::parse::{parse, DateTime, PlayEntry};
-use std::{fs::read_dir, io::Error, path::PathBuf, time::Instant};
+use parser::{parse::{parse, BigBuilder, DateTime, SmallBuilder}, table::{Table, BIG_HISTORY_TABLE}};
+use std::{fs::read_dir, io::Error, path::PathBuf, thread, time::Instant};
 
-pub mod cli;
 pub mod parser;
 
 fn get_paths(dir: &str) -> Result<Vec<PathBuf>, Error> {
@@ -12,13 +10,28 @@ fn get_paths(dir: &str) -> Result<Vec<PathBuf>, Error> {
         .collect())
 }
 
+fn parse_file(file: PathBuf) -> (u8, Table) {
+
+    let mut tbl = Table::new(BIG_HISTORY_TABLE);
+    let mut builder = BigBuilder::new(&mut tbl);
+
+    parse(file.clone(), &mut builder).unwrap();
+
+    let filename = file.file_name().unwrap().to_str().unwrap();
+    let parts: Vec<&str> = filename.split(&['_', '.'][..]).collect();
+    let number =  parts.get(parts.len() - 2).unwrap();
+
+    println!("{number}");
+
+    (number.parse().unwrap(), tbl)
+}
+
 fn main() {
-    let mut table: Vec<PlayEntry> = Vec::new();
     let start_read_files = Instant::now();
 
     println!("getting file paths...");
 
-    let paths = get_paths(r"X:\OneDrive\programmering\rs\spotify_data_explorer\data")
+    let paths = get_paths(r"X:\OneDrive\programmering\rs\spotify_data_explorer\data\full")
         .expect("Could not get files");
     let elapsed_read_files = start_read_files.elapsed();
 
@@ -28,28 +41,44 @@ fn main() {
 
     let read_files_total = Instant::now();
 
+    /*
+    
+      {
+    "endTime" : "2023-08-27 22:44",
+    "artistName" : "Vincent Neil Emerson",
+    "trackName" : "Manhattan Island Serenade",
+    "msPlayed" : 5150
+  },
+    
+    */
+
+    let mut tbl = Table::new(BIG_HISTORY_TABLE);
+
+    let mut handles = vec![];
+
     for path in paths {
-        println!("  Reading {:?}", path.file_name().unwrap_or_default());
-        let parse_time = Instant::now();
 
-        let res = parse(path).unwrap();
+        let handle = thread::spawn(|| {
+            parse_file(path)
+        });
 
-        let elapsed_parse = parse_time.elapsed();
-        println!("      - entries: {:.2?}", res.len());
-        println!("      - time: {elapsed_parse:.2?}");
+        handles.push(handle);
+    }
 
-        table.extend(res);
+
+    let mut res: Vec<(u8, Table)> = handles.into_iter().map(|t| t.join().expect("thread failed")).collect();
+    res.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for table in res {
+        tbl.rows.extend(table.1.rows);
     }
 
     let elapsed_files_total = read_files_total.elapsed();
     println!("Parsed files: {elapsed_files_total:.2?}");
 
-    let db_node = Node::Table(table);
-    let above_3s = Node::PlayTimeAbove(&db_node, 3000);
-    let before = Node::During(&above_3s, DateTime { year: 2023, month: 12, day: 31, hour: 23, minute: 59 }, DateTime { year: 2024, month: 01, day: 10, hour: 23, minute: 59 });
-    let test_cmd = Node::Display(&before);
+    //tbl = tbl.field_is_greater_than("msplayed", &parser::table::Field::Number(109187.0)).unwrap();
+    //tbl = tbl.field_is("artist", &parser::table::Field::String("lil darkie".to_owned())).unwrap();
 
-    cli::run::run(&test_cmd);
-
-    println!("Hello, world!");
+    //println!("{}", tbl);
+    println!("TOTAL LEN: {}", tbl.len());
 }

@@ -1,12 +1,8 @@
 use std::{
-    cmp::Ordering,
-    ffi::OsString,
-    fmt::{self, Display, Formatter},
-    fs, io,
-    num::{IntErrorKind, ParseIntError},
-    path::PathBuf,
-    str::FromStr,
+    cmp::Ordering, default, ffi::OsString, fmt::{self, Debug, Display, Formatter}, fs, io, num::{IntErrorKind, ParseIntError}, path::PathBuf, str::FromStr
 };
+
+use super::table::{Field, Table};
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct DateTime {
@@ -41,6 +37,12 @@ impl Display for DateTime {
             "{:0>2}/{:0>2}/{:0>2} @ {:0>2}:{:0>2}",
             self.day, self.month, self.year, self.hour, self.minute
         )
+    }
+}
+
+impl Debug for DateTime {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self))
     }
 }
 
@@ -100,35 +102,66 @@ pub struct DebugInfo {
     pub line: usize,
 }
 
-#[derive(Clone)]
-pub struct PlayEntry {
-    pub time: DateTime,
-    pub artist: String,
-    pub song: String,
-    pub ms_played: u32,
-    pub debug_info: DebugInfo,
+
+/* 
+  {
+    "ts": "2012-02-08T13:00:55Z",
+    "username": "jonathanhermin",
+    "platform": "Windows 7 (Unknown Ed) SP1 [x86 0]",
+    "ms_played": 4991,
+    "conn_country": "SE",
+    "ip_addr_decrypted": "83.172.84.28",
+    "user_agent_decrypted": null,
+    "master_metadata_track_name": "Got To Be There",
+    "master_metadata_album_artist_name": "Michael Jackson",
+    "master_metadata_album_album_name": "The Very Best Of Michael Jackson With The Jackson 5",
+    "spotify_track_uri": "spotify:track:5SId8ny8P11Ekz6KghvJYg",
+    "episode_name": null,
+    "episode_show_name": null,
+    "spotify_episode_uri": null,
+    "reason_start": "popup",
+    "reason_end": "popup",
+    "shuffle": false,
+    "skipped": true,
+    "offline": false,
+    "offline_timestamp": 0,
+    "incognito_mode": false
+  },
+
+
+*/
+
+pub trait BuilderTrait {
+    fn append(&mut self, s: &str, d: DebugInfo) -> Result<(), DateTimeError>;
 }
 
-#[derive(Default)]
-struct Builder {
+pub struct SmallBuilder<'a> {
     buf: [String; 4],
     ptr: usize,
-    pub vec: Vec<PlayEntry>,
+    pub table: &'a mut Table,
 }
 
-impl Builder {
-    pub fn append(&mut self, s: &str, d: DebugInfo) -> Result<(), DateTimeError> {
+impl<'a> SmallBuilder<'a> {
+    pub fn new(tbl: &'a mut Table) -> Self {
+        SmallBuilder { buf: ["".to_owned(),"".to_owned(),"".to_owned(), "".to_owned()], ptr: 0, table: tbl }
+    }
+}
+
+impl BuilderTrait for SmallBuilder<'_> {
+    fn append(&mut self, s: &str, _d: DebugInfo) -> Result<(), DateTimeError> {
         if self.ptr == self.buf.len() - 1 {
             self.buf[self.ptr] = s.to_owned();
             self.ptr = 0;
 
-            self.vec.push(PlayEntry {
-                time: self.buf[0].as_str().parse()?,
-                artist: self.buf[1].to_lowercase(),
-                song: self.buf[2].to_lowercase(),
-                ms_played: self.buf[3].parse()?,
-                debug_info: d,
-            });
+            //println!("{:?}", self.buf);
+
+            self.table.insert(
+                [ 
+                    Field::Date(self.buf[0].as_str().parse()?),
+                    Field::String(self.buf[1].to_lowercase()),
+                    Field::String(self.buf[2].to_lowercase()),
+                    Field::Number(self.buf[3].parse().unwrap_or_default()),
+                    ]).expect("COULD NOT INSERT");
         } else {
             self.buf[self.ptr] = s.to_owned();
             self.ptr += 1;
@@ -138,8 +171,84 @@ impl Builder {
     }
 }
 
-pub fn parse(path: PathBuf) -> io::Result<Vec<PlayEntry>> {
-    let mut fac = Builder::default();
+pub struct BigBuilder<'a> {
+    buf: [String; 21],
+    ptr: usize,
+    pub table: &'a mut Table,
+}
+
+impl<'a> BigBuilder<'a> {
+    pub fn new(tbl: &'a mut Table) -> Self {
+        let strarr: [String; 21] =  Default::default();
+        BigBuilder { buf: strarr, ptr: 0, table: tbl }
+    }
+}
+
+impl BuilderTrait for BigBuilder<'_> {
+    fn append(&mut self, s: &str, _d: DebugInfo) -> Result<(), DateTimeError> {
+        if self.ptr == self.buf.len() - 1 {
+            self.buf[self.ptr] = s.to_string();
+            self.ptr = 0;
+
+            //println!("{:?}", self.buf);
+
+            self.table.insert(
+                [ 
+                    // "ts": "2010-11-02T15:42:08Z",
+                    // - !!! - Field::Date(self.buf[0].parse()?),
+                    Field::String(self.buf[0].to_lowercase()),
+                    // - !!! -
+                    // "username": "jonathanhermin",
+                    Field::String(self.buf[1].to_lowercase()),
+                    // "platform": "Windows 7 (Enterprise Ed) SP0 [x86 0]",
+                    Field::String(self.buf[2].to_lowercase()),
+                    // "ms_played": 2890,
+                    Field::Number(self.buf[3].parse().unwrap_or_default()),
+                    // "conn_country": "SE",
+                    Field::String(self.buf[4].to_lowercase()),
+                    // "ip_addr_decrypted": "83.172.84.28",
+                    Field::String(self.buf[5].to_lowercase()),
+                    // "user_agent_decrypted": null,
+                    Field::String(self.buf[6].to_lowercase()),
+                    // "master_metadata_track_name": "The Black Lake",
+                    Field::String(self.buf[7].to_lowercase()),
+                    // "master_metadata_album_artist_name": "Patrick Doyle",
+                    Field::String(self.buf[8].to_lowercase()),
+                    // "master_metadata_album_album_name": "Harry Potter And The Goblet Of Fire (Original Motion Picture Soundtrack)",
+                    Field::String(self.buf[9].to_lowercase()),
+                    // "spotify_track_uri": "spotify:track:38GqVS4rDFnL0291QCiza9",
+                    Field::String(self.buf[10].to_lowercase()),
+                    // "episode_name": null,
+                    Field::String(self.buf[11].to_lowercase()),
+                    // "episode_show_name": null,
+                    Field::String(self.buf[12].to_lowercase()),
+                    // "spotify_episode_uri": null,
+                    Field::String(self.buf[13].to_lowercase()),
+                    // "reason_start": "clickrow",
+                    Field::String(self.buf[14].to_lowercase()),
+                    // "reason_end": "clickrow",
+                    Field::String(self.buf[15].to_lowercase()),
+                    // "shuffle": false, (BOOL !! !!)
+                    Field::String(self.buf[16].to_lowercase()),
+                    // "skipped": true,
+                    Field::String(self.buf[17].to_lowercase()),
+                    // "offline": false,
+                    Field::String(self.buf[18].to_lowercase()),
+                    // "offline_timestamp": 0,
+                    Field::Number(self.buf[19].parse().unwrap_or_default()),
+                    // "incognito_mode": null
+                    Field::String(self.buf[20].to_lowercase()),
+                    ]).expect("COULD NOT INSERT");
+        } else {
+            self.buf[self.ptr] = s.to_string();
+            self.ptr += 1;
+        }
+
+        Ok(())
+    }
+}
+
+pub fn parse(path: PathBuf, builder: &mut dyn BuilderTrait) -> io::Result<()> {
 
     for (i, l) in fs::read_to_string(&path)?
         .lines()
@@ -155,10 +264,11 @@ pub fn parse(path: PathBuf) -> io::Result<Vec<PlayEntry>> {
         let sanitized = &l
             .split_at(l.find(':').unwrap_or_default() + 2)
             .1
-            .replace('"', "");
+            .replace('"', "")
+            .replace(',', "");
 
-        fac.append(sanitized, debug).expect("ERR");
+        builder.append(sanitized, debug).expect("ERR");
     }
 
-    Ok(fac.vec)
+    Ok(())
 }
