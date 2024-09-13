@@ -4,7 +4,7 @@ use std::{
 
 use super::table::{Field, Table};
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Hash, Eq)]
 pub struct DateTime {
     pub day: u8,
     pub month: u8,

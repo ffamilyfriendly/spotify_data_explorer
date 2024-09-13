@@ -1,12 +1,12 @@
-use std::fmt::{Debug, Display};
+use std::{collections::HashMap, fmt::{Debug, Display}, iter::Map};
 
 use super::parse::DateTime;
 
-#[derive(PartialEq, PartialOrd, Clone, Debug)]
+#[derive(PartialEq, PartialOrd, Clone, Debug, Hash, Eq)]
 pub enum Field {
     Date(DateTime),
     String(String),
-    Number(f64)
+    Number(u64)
 }
 
 impl Display for Field {
@@ -181,6 +181,46 @@ impl Table {
         }).collect();
 
         Ok(self)
+    }
+
+    pub fn group_by(&self, field: &str) -> Result<Table, DataErrors> {
+        let col = self.get_col(field)?;
+
+        let mut cache = HashMap::new();
+
+        for row in &self.rows {
+            let field = &row.fields[col];
+
+            cache.entry(field.clone()).and_modify(|count| *count += 1).or_insert(1);
+        };
+        
+        let rows = cache.into_iter().map(|(x, y)| Row { fields: vec![ x.clone(), Field::Number(y as u64) ] }).collect();
+
+        let table = Table {
+            header: vec![(field.to_owned(), 0), ("COUNT".to_owned(), 1)],
+            rows: rows
+        };
+        
+        Ok(table)
+    }
+
+    pub fn select<const T: usize>(self, cols: [&str; T]) -> Self {
+        Table {
+            header: self.header.into_iter().filter(|x| cols.contains(&x.0.as_str())).collect(),
+            rows: self.rows
+        }
+    }
+
+    pub fn sort_by(mut self, field: &str) -> Result<Self, DataErrors> {
+        let col = self.get_col(field)?;
+        self.rows.sort_by(| a, b | a.fields[col].partial_cmp(&b.fields[col]).expect("CANT ORDER"));
+
+        let ordered = Table {
+            header: self.header,
+            rows: self.rows
+        };
+
+        Ok(ordered)
     }
 
     pub fn len(&self) -> usize {

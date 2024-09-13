@@ -1,4 +1,4 @@
-use parser::{parse::{parse, BigBuilder, DateTime, SmallBuilder}, table::{Table, BIG_HISTORY_TABLE}};
+use parser::{parse::{parse, BigBuilder, DateTime, SmallBuilder}, table::{Field, Table, BIG_HISTORY_TABLE}};
 use std::{fs::read_dir, io::Error, path::PathBuf, thread, time::Instant};
 
 pub mod parser;
@@ -76,9 +76,17 @@ fn main() {
     let elapsed_files_total = read_files_total.elapsed();
     println!("Parsed files: {elapsed_files_total:.2?}");
 
+    //tbl = tbl.field_is("artist", &Field::String("sierra ferrell".to_string())).unwrap();
+
+    let mut grouped = tbl.group_by("song").unwrap();
+
     //tbl = tbl.field_is_greater_than("msplayed", &parser::table::Field::Number(109187.0)).unwrap();
     //tbl = tbl.field_is("artist", &parser::table::Field::String("lil darkie".to_owned())).unwrap();
 
-    //println!("{}", tbl);
-    println!("TOTAL LEN: {}", tbl.len());
+    //println!("{}", grouped);
+
+    grouped = grouped.sort_by("COUNT").unwrap();
+
+    
+    println!("unique tracks: {}", grouped);
 }
