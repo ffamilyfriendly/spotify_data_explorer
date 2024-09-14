@@ -1,5 +1,5 @@
 use std::{
-    cmp::Ordering, default, ffi::OsString, fmt::{self, Debug, Display, Formatter}, fs, io, num::{IntErrorKind, ParseIntError}, path::PathBuf, str::FromStr
+    cmp::Ordering, ffi::OsString, fmt::{self, Debug, Display, Formatter}, fs::File, io::{self, BufRead, BufReader}, num::{IntErrorKind, ParseIntError}, path::PathBuf, str::FromStr
 };
 
 use super::table::{Field, Table};
@@ -105,7 +105,7 @@ pub struct DebugInfo {
 
 /* 
   {
-    "ts": "2012-02-08T13:00:55Z",
+    
     "username": "jonathanhermin",
     "platform": "Windows 7 (Unknown Ed) SP1 [x86 0]",
     "ms_played": 4991,
@@ -184,6 +184,41 @@ impl<'a> BigBuilder<'a> {
     }
 }
 
+// "ts": "2012-02-08T13:00:55Z",
+
+pub fn to_timestamp_big_history(value: &str) -> Result<DateTime, DateTimeError> {
+    let sep = value.find('T').ok_or(DateTimeError::ParseError(
+        "found no date and time separator",
+    ))?;
+
+    let (date, time) = value.split_at(sep);
+    let mut date_segments = date.split('-');
+    let mut time_segments = time.get(1..).unwrap().split(":");
+
+    Ok(DateTime {
+        year: date_segments
+            .next()
+            .ok_or(DateTimeError::ParseError("unable to retrieve year"))?
+            .parse()?,
+        month: date_segments
+            .next()
+            .ok_or(DateTimeError::ParseError("unable to retrieve month"))?
+            .parse()?,
+        day: date_segments
+            .next()
+            .ok_or(DateTimeError::ParseError("unable to retrieve day"))?
+            .parse()?,
+        hour: time_segments
+            .next()
+            .ok_or(DateTimeError::ParseError("unable to retrieve day"))?
+            .parse()?,
+        minute: time_segments
+            .next()
+            .ok_or(DateTimeError::ParseError("unable to retrieve day"))?
+            .parse()?,
+    })
+}
+
 impl BuilderTrait for BigBuilder<'_> {
     fn append(&mut self, s: &str, _d: DebugInfo) -> Result<(), DateTimeError> {
         if self.ptr == self.buf.len() - 1 {
@@ -196,7 +231,7 @@ impl BuilderTrait for BigBuilder<'_> {
                 [ 
                     // "ts": "2010-11-02T15:42:08Z",
                     // - !!! - Field::Date(self.buf[0].parse()?),
-                    Field::String(self.buf[0].to_lowercase()),
+                    Field::Date(to_timestamp_big_history(&self.buf[0])?),
                     // - !!! -
                     // "username": "jonathanhermin",
                     Field::String(self.buf[1].to_lowercase()),
@@ -229,11 +264,11 @@ impl BuilderTrait for BigBuilder<'_> {
                     // "reason_end": "clickrow",
                     Field::String(self.buf[15].to_lowercase()),
                     // "shuffle": false, (BOOL !! !!)
-                    Field::String(self.buf[16].to_lowercase()),
+                    Field::Bool(self.buf[16].to_lowercase() == "true"),
                     // "skipped": true,
-                    Field::String(self.buf[17].to_lowercase()),
+                    Field::Bool(self.buf[17].to_lowercase() == "true"),
                     // "offline": false,
-                    Field::String(self.buf[18].to_lowercase()),
+                    Field::Bool(self.buf[18].to_lowercase() == "true"),
                     // "offline_timestamp": 0,
                     Field::Number(self.buf[19].parse().unwrap_or_default()),
                     // "incognito_mode": null
@@ -250,12 +285,15 @@ impl BuilderTrait for BigBuilder<'_> {
 
 pub fn parse(path: PathBuf, builder: &mut dyn BuilderTrait) -> io::Result<()> {
 
-    for (i, l) in fs::read_to_string(&path)?
-        .lines()
-        .filter(|l| l.contains(':'))
-        .map(|l| l.trim())
-        .enumerate()
-    {
+    let file = File::open(&path)?;
+    let reader = BufReader::new(file);
+
+    let mut i = 0;
+    for line in reader.lines() {
+        i += 1;
+        let l = line?.trim().to_owned();
+        if !l.contains(":") { continue; }
+
         let debug = DebugInfo {
             line: i,
             file_path: path.file_name().unwrap_or_default().to_owned(),

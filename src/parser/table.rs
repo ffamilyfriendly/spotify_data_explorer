@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::{Debug, Display}, iter::Map};
+use std::{collections::HashMap, fmt::{Debug, Display, Write}, io::Read, ops::Range};
 
 use super::parse::DateTime;
 
@@ -6,7 +6,8 @@ use super::parse::DateTime;
 pub enum Field {
     Date(DateTime),
     String(String),
-    Number(u64)
+    Number(u64),
+    Bool(bool)
 }
 
 impl Display for Field {
@@ -14,7 +15,8 @@ impl Display for Field {
         let as_str = match self {
             Field::String(s) => s,
             Field::Number(n) => &n.to_string(),
-            Field::Date(d) => &format!("{}", d)
+            Field::Date(d) => &format!("{}", d),
+            Field::Bool(b) => &format!("{}", b)
         };
 
         f.write_str(as_str)
@@ -33,74 +35,37 @@ impl From<&str> for Field {
     }
 }
 
+impl From<u64> for Field {
+    fn from(value: u64) -> Self {
+        Field::Number(value)
+    }
+}
+
+impl From<DateTime> for Field {
+    fn from(value: DateTime) -> Self {
+        Field::Date(value)
+    }
+}
+
+impl From<bool> for Field {
+    fn from(value: bool) -> Self {
+        Field::Bool(value)
+    }
+}
+
 #[derive(Clone)]
 pub struct Row {
     pub fields: Vec<Field>
 }
 
+impl Display for Row {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str_arr: Vec<String> = self.fields.iter().map(|item| item.to_string()).collect();
+        f.write_str(&str_arr.join("|"))
+    }
+}
 
-/*
-
-                    // "ts": "2010-11-02T15:42:08Z",
-                    Field::Date(self.buf[0].parse()?),
-                    // "username": "jonathanhermin",
-                    Field::String(self.buf[1].to_lowercase()),
-                    // "platform": "Windows 7 (Enterprise Ed) SP0 [x86 0]",
-                    Field::String(self.buf[2].to_lowercase()),
-                    // "ms_played": 2890,
-                    Field::Number(self.buf[3].parse().unwrap_or_default()),
-                    // "conn_country": "SE",
-                    Field::String(self.buf[4].to_lowercase()),
-                    // "ip_addr_decrypted": "83.172.84.28",
-                    Field::String(self.buf[5].to_lowercase()),
-                    // "user_agent_decrypted": null,
-
-                    Field::String(self.buf[6].to_lowercase()),
-                    // "master_metadata_track_name": "The Black Lake",
-
-                    Field::String(self.buf[7].to_lowercase()),
-                    // "master_metadata_album_artist_name": "Patrick Doyle",
-
-                    Field::String(self.buf[8].to_lowercase()),
-                    // "master_metadata_album_album_name": "Harry Potter And The Goblet Of Fire (Original Motion Picture Soundtrack)",
-
-                    Field::String(self.buf[9].to_lowercase()),
-                    // "spotify_track_uri": "spotify:track:38GqVS4rDFnL0291QCiza9",
-
-                    Field::String(self.buf[10].to_lowercase()),
-                    // "episode_name": null,
-
-                    Field::String(self.buf[11].to_lowercase()),
-                    // "episode_show_name": null,
-
-                    Field::String(self.buf[12].to_lowercase()),
-                    // "spotify_episode_uri": null,
-
-                    Field::String(self.buf[13].to_lowercase()),
-                    // "reason_start": "clickrow",
-
-                    Field::String(self.buf[14].to_lowercase()),
-                    // "reason_end": "clickrow",
-
-                    Field::String(self.buf[15].to_lowercase()),
-                    // "shuffle": false, (BOOL !! !!)
-
-                    Field::String(self.buf[16].to_lowercase()),
-                    // "skipped": true,
-
-                    Field::String(self.buf[17].to_lowercase()),
-                    // "offline": false,
-
-                    Field::String(self.buf[18].to_lowercase()),
-                    // "offline_timestamp": 0,
-
-                    Field::Number(self.buf[19].parse().unwrap_or_default()),
-                    // "incognito_mode": null
-                    Field::String(self.buf[20].to_lowercase()),
-
-*/
-
-pub static BIG_HISTORY_TABLE: [&str; 21] = ["ts", "username", "platform", "msplayed", "country", "ip_addr", "user_agent", "song", "artist", "album", "track_uri", "episode_name", "episode_show_name", "episode_uri", "reason_start", "reason_end", "shuffle", "skipped", "offline", "offline_timestamp", "incognito_mode"];
+pub static BIG_HISTORY_TABLE: [&str; 21] = ["time", "username", "platform", "msplayed", "country", "ip_addr", "user_agent", "song", "artist", "album", "track_uri", "episode_name", "episode_show_name", "episode_uri", "reason_start", "reason_end", "shuffle", "skipped", "offline", "offline_timestamp", "incognito_mode"];
 
 pub struct Table {
     pub header: Vec<(String, usize)>,
@@ -183,6 +148,16 @@ impl Table {
         Ok(self)
     }
 
+    pub fn field_in_range(mut self, field: &str, lower: &Field, upper: &Field) -> Result<Self, DataErrors> {
+        let col = self.get_col(field)?;
+
+        self.rows = self.rows.into_iter().filter(|x| {
+            &x.fields[col] > lower && &x.fields[col] <= upper
+        }).collect();
+
+        Ok(self)
+    }
+
     pub fn group_by(&self, field: &str) -> Result<Table, DataErrors> {
         let col = self.get_col(field)?;
 
@@ -223,6 +198,35 @@ impl Table {
         Ok(ordered)
     }
 
+    pub fn row_at(&self, index: usize) -> Option<Row> {
+        let first = match self.rows.get(index) {
+            Some(s) => s,
+            None => return None
+        };
+
+        let fields: Vec<Field> = self.header.iter().map(|(_name, col)| first.fields[*col].clone()).collect();
+
+        Some(Row {
+            fields
+        })
+    }
+
+    pub fn take(&self, range: Range<i32>) -> Vec<Row> {
+        let mut res = Vec::new();
+        for i in range {
+            match self.row_at(i as usize) {
+                Some(i) => res.push(i),
+                None => {}
+            }
+        }
+
+        res
+    }
+
+    pub fn take_first(&self) -> Option<Row> {
+        self.row_at(0)
+    }
+
     pub fn len(&self) -> usize {
         self.rows.len()
     } 
@@ -232,10 +236,9 @@ impl Table {
 impl std::fmt::Display for Table {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for r in &self.rows {
-            for en in &self.header {
-                f.write_fmt(format_args!("{}: {}\n", en.0, r.fields[en.1]))?;
-            }
-            f.write_str("-\n")?;
+            let fields: Vec<&Field> = self.header.iter().map(|(_name, col)| &r.fields[*col]).collect();
+            let as_str: Vec<String> = fields.into_iter().map(|f| f.to_string()).collect();
+            f.write_str(&format!("{}\n", as_str.join("|")))?;
         }
         Ok(())
     }
